@@ -38,7 +38,8 @@ const userSchema = new mongoose.Schema({ //db schema
     email: String,
     password: String,
     googleId: String,
-    facebookId: String
+    facebookId: String,
+    secret: String
 });
 
 userSchema.plugin(passportLocalMongoose); //used to hash and salt passwords + put in db
@@ -118,7 +119,15 @@ app.get("/register", function (req, res){
 
 app.get("/secrets", function(req, res){
     if (req.isAuthenticated()) {
-        res.render("secrets");
+        User.find({"secret": {$ne: null}}, function(err, foundUsers){
+            if (err) {
+                console.log(err);
+            } else {
+                if (foundUsers) {
+                    res.render("secrets", {usersWithSecrets: foundUsers});
+                };
+            };
+        });
     } else {
         res.redirect("/login");
     };
@@ -133,6 +142,14 @@ app.get("/logout", function(req, res){
         }
       });
 });
+
+app.get("/submit", function(req, res) {
+    if (req.isAuthenticated()) {
+        res.render("submit");
+    } else {
+        res.redirect("/login");
+    }
+})
 // ---------------------------------------------------------------------------
 
 // POST requests --------------------------------------------------------------
@@ -184,6 +201,25 @@ app.post("/login", passport.authenticate("local"), function(req, res){
         };
     });*/ //emptied after using passport
 });
+
+app.post("/submit", function(req, res){
+    const submittedSecret = req.body.secret;
+
+    console.log(req.user._id.toString());
+
+    User.findById(req.user._id.toString(), function(err, foundUser){
+        if (err) {
+            console.log(err);
+        } else {
+            if (foundUser) {
+                foundUser.secret = submittedSecret;
+                foundUser.save(function(){
+                    res.redirect("/secrets");
+                });
+            };
+        };
+    });
+})
 // ----------------------------------------------------------------------------
 
 
