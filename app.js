@@ -5,6 +5,7 @@ const express = require ("express");
 const bodyParser = require ("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
+const findOrCreate = require("mongoose-findorcreate")
 //const encrypt = require("mongoose-encryption"); //encrypts when you call save() decrypts when you call find()
 //const md5 = require("md5"); // uses hash functions, dropped when starting to use bcrypt
 //const bcrypt = require("bcrypt"); // salting and hash functions
@@ -12,6 +13,8 @@ const mongoose = require("mongoose");
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose"); //passport plugin, easy to build username and password login
+const GoogleStrategy = require( 'passport-google-oauth2' ).Strategy;
+const FacebookStrategy = require( 'passport-facebook' ).Strategy;
 
 const app = express();
 
@@ -33,10 +36,13 @@ mongoose.connect("mongodb://0.0.0.0:27017/userDB", {useNewUrlParser: true});
 
 const userSchema = new mongoose.Schema({ //db schema
     email: String,
-    password: String
+    password: String,
+    googleId: String,
+    facebookId: String
 });
 
 userSchema.plugin(passportLocalMongoose); //used to hash and salt passwords + put in db
+userSchema.plugin(findOrCreate);
 
 //const secret = "Thisisourlittlesecret."; // |, now .env, used to encrypt db
 //userSchema.plugin(encrypt, {secret: process.env.SECRET, encryptedFields: ['password'], excludeFromEncryption: ['email']}); // BEFORE CREATING MONGOOSE MODEL, removed when using hash f and md5
@@ -44,8 +50,36 @@ userSchema.plugin(passportLocalMongoose); //used to hash and salt passwords + pu
 const User = new mongoose.model("User", userSchema) //user module ("name of collection", used schema)
 
 passport.use(User.createStrategy());
-passport.serializeUser(User.serializeUser()); //creates cookie and stores data - usrname, password
-passport.deserializeUser(User.deserializeUser()); //crumble cookie, see data inside
+passport.serializeUser(function(User, done) {
+    done(null, User);
+  }); //creates cookie and stores data - usrname, password
+passport.deserializeUser(function(User, done) {
+    done(null, User);
+  }); //crumble cookie, see data inside
+
+passport.use(new GoogleStrategy({
+    clientID:     process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets", //what I used in the google app
+    passReqToCallback   : true
+  },
+  function (request, accessToken, refreshToken, profile, done) {
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return done(err, user);
+    });
+  }
+));
+passport.use(new FacebookStrategy({
+    clientID:     process.env.FACEBOOK_CLIENT_ID,
+    clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/facebook/secrets"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    User.findOrCreate({ facebookId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 // GET requests for main pages - login, register and home. -----------------------------
 // not rendering secrets page unless user is logged in, so no get for this route
@@ -53,9 +87,30 @@ app.get("/", function (req, res){
     res.render("home");
 });
 
+app.get('/auth/google', //use google strategy
+  passport.authenticate('google', { scope:
+      [ 'email', 'profile' ] }
+));
+app.get('/auth/facebook', //use google strategy
+  passport.authenticate('facebook', { scope:
+      [ 'email', 'profile' ] }
+));
+
+app.get( '/auth/google/secrets',
+    passport.authenticate( 'google', {
+        successRedirect: '/secrets',
+        failureRedirect: '/login'
+}));
+app.get( '/auth/facebook/secrets',
+passport.authenticate( 'facebook', { failureRedirect: '/login' }),
+function(req, res) {
+  res.redirect('/secrets');
+});
+
 app.get("/login", function (req, res){
     res.render("login");
 });
+
 
 app.get("/register", function (req, res){
     res.render("register");
