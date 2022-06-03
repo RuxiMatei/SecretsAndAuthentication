@@ -6,7 +6,9 @@ const bodyParser = require ("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
 //const encrypt = require("mongoose-encryption"); //encrypts when you call save() decrypts when you call find()
-const md5 = require("md5");
+//const md5 = require("md5"); // uses hash functions, dropped when starting to use bcrypt
+const bcrypt = require("bcrypt"); // salting and hash functions
+const saltRounds = 10; // times salt is added to password
 
 const app = express();
 
@@ -45,31 +47,39 @@ app.get("/register", function (req, res){
 
 // POST requests --------------------------------------------------------------
 app.post("/register", function(req, res){
-    const newUser = new User({ //create new user when they register using form
-        email: req.body.username, //from their input name attributes
-        password:md5(req.body.password)
-    });
-    newUser.save(function(err) {  //check to see if errors during save process
-        if (err) {
-            console.log(err);
-        } else {
-            res.render("secrets"); //if no errors render secrets page
-        };
+
+    bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+        const newUser = new User({ //create new user when they register using form
+            email: req.body.username, //from their input name attributes
+            password: hash
+        });
+        newUser.save(function(err) {  //check to see if errors during save process
+            if (err) {
+                console.log(err);
+            } else {
+                res.render("secrets"); //if no errors render secrets page
+            };
+        });
     });
 });
 
 app.post("/login", function(req, res){
     const username = req.body.username; //require user and password used by client
-    const password = md5(req.body.password);
+    const password = req.body.password;
 
     User.findOne({email: username}, function (err, foundUser) { // check to see if we have an email = username
         if (err) {
             console.log(err);
         } else {
             if (foundUser) { //check to see if we found a user w/ that email
-                if (foundUser.password === password) { //check if passwords match
-                    res.render("secrets"); //then render secrets page
-                };
+                //if (foundUser.password === password) { //check if passwords match
+                //    res.render("secrets"); //then render secrets page
+                //};      used password      for tested user
+                bcrypt.compare(password, foundUser.password, function(err, result) {
+                    if (result === true) { // result = comparison btw passw and foundUser.passw
+                        res.render("secrets");
+                    };
+                });
             };
         };
     });
